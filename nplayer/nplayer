@@ -39,6 +39,110 @@ _global_variables() {
   quiet=""
 }
 
+_android_player_check() {
+  local \
+    _ea
+  _ea="$( \
+    cat \
+      "${HOME}/.termux/termux.properties" | \
+      grep \
+        "^allow-external-apps" || \
+        true)"
+  if [[ "${_ea}" == "" ]]; then
+    _msg_error \
+      "uncomment 'allow-external-apps = true' in ${HOME}/.termux/termux.properties" \
+      1
+  fi || \
+    true
+}
+
+_get_cached() {
+  local \
+    _in="${1}" \
+    _type="${2}"
+    _cached
+    _sum
+  _sum="$( \
+    sha256sum \
+      "${_in}" | \
+      awk \
+        '{print $1}')"
+  if [ -e "${_cache}/${_sum}.${_type}" ]; then
+    _cached="$( \
+      cat \
+        "${_cache}/${_sum}.${_type}")"
+    if [ -e "${_cached}" ]; then
+      echo \
+	"${_cached}"
+      return
+    fi
+  fi
+}
+
+_get_video() {
+  local \
+    _in="${1}" \
+    _type="${2}" \
+    _pos="${3}" \
+    _cached
+  _new="$( \
+    mktemp)"
+  _cached="$( \
+    _get_cached \
+      "${_in}" \
+      "${_type}")"
+  if [[ "${_cached}" != "" ]]; then
+    _new="${_cached}"
+  else
+    gridcrop \
+      -v \
+      -r \
+        2.1 \
+      "${_in}" \
+      "${_new}"
+    echo \
+      "${_new}" > \
+      "${_cache}/${_sum}.${_type}"
+  fi
+}
+
+_sync_play() {
+  dynssh \
+    -v \
+    -t \
+      "${_displays}" \
+    -- \
+   "${_displays}" \
+   echo \
+     "${_open}" \
+       "${_upper}.1.1.mp4" "|" \
+     at \
+       "now + 1 minute"
+  echo \
+    "${_open}" \
+      "${_lower}.2.1.mp4" | \
+    at \
+      "now + 1 minute"
+}
+
+_send() {
+  _dynssh_opts+=(
+    -C
+      rsync
+  )
+  _rsync_opts+=(
+    -avz
+  )
+  dynssh \
+    -v \
+    -t \
+      "${_displays}" \
+    "${_dynssh_opts[@]}" \
+    -- \
+    "${_upper}.1.1.mp4" \
+    "${_displays}:${_upper}.1.1.mp4"
+}
+
 # Remote encade files
 # $1: input file
 # $2: output file
@@ -78,80 +182,25 @@ _nplayer() {
   if [[ "${_view_mode}" == "freedesktop" ]]; then
     _open='xdg-open'
   elif [[ "${_view_mode}" == "termux" ]]; then
-    _open='xdg-open'
+    _open='termux-open'
+    _android_player_check
   fi
-  _upper="$( \
-    mktemp)"
-  _lower="$( \
-    mktemp)"
-  _sum="$( \
-    sha256sum \
-      "${_in}" | awk '{print $1}')"
-  if [ -e "${_cache}/${_sum}.lower" ]; then
-    _lower="$( \
-      cat \
-        "${_cache}/${_sum}.lower")"
-  else
-    gridcrop \
-      -v \
-      -r \
-        2.1 \
-      "${_in}" \
-      "${_lower}"
-    echo \
-      "${_lower}" > \
-      "${_cache}/${_sum}.lower"
-  fi
+  _get_video \
+    "${_in}" \
+    "lower" \
+    "2.1"
+  _lower="${_new}"
   if [[ "${_encode_mode}" == 'local' ]] ; then
     if [[ "${split_mode}" == "horizontal" ]]; then
-      if [[ -e "${_cache}/${_sum}.upper" ]]; then
-        _upper="$( \
-          cat \
-            "${_cache}/${_sum}.upper")"
-      else
-        gridcrop \
-          -v \
-          -r \
-            1.1 \
-          "${_in}" \
-          "${_upper}"
-        echo \
-          "${_upper}" > \
-          "${_cache}/${_sum}.upper"
-      fi
-    _dynssh_opts+=(
-      -C
-        rsync
-    )
-    _rsync_opts+=(
-      -avz
-    )
-    dynssh \
-      -v \
-      -t \
-        "${_displays}" \
-      "${_dynssh_opts[@]}" \
-      -- \
-      "${_upper}.1.1.mp4" \
-      "${_displays}:${_upper}.1.1.mp4"
+      _get_video \
+        "${_in}" \
+        "upper" \
+        "1.1"
+      _upper="${_new}"
     fi
+    _send
   fi
-  dynssh \
-    -v \
-    -t \
-      "${_displays}" \
-    -- \
-   "${_displays}" \
-   echo \
-     "${_open}" \
-       "${_upper}.1.1.mp4" "|" \
-     "at" \
-       "now + 1 minute"
-  echo \
-    "${_open}" \
-      "${_lower}.2.1.mp4" | \
-    at \
-      "now + 1 minute"
+  _sync_play
 }
 
 # Set defaults and, if present, overrides
