@@ -124,7 +124,7 @@ _get_open() {
   fi
 }
 
-at_play() {
+_at_play() {
   local \
     _in="${1}" \
     _cmd=()
@@ -141,17 +141,16 @@ at_play() {
 }
 
 _sync_play() {
-  dynssh \
-    -v \
-    -t \
+  eval "$(_at_play \
+      "${_lower}.2.1.mp4")"
+  ( dynssh \
+      -v \
+      -t \
+        "${_displays}" \
+      -- \
       "${_displays}" \
-    -- \
-    "${_displays}" \
-    $(_at_play \
-        "${_upper}.1.1.mp4") || \
-    true
-  $(_at_play \
-      "${_lower}.2.1.mp4")
+      $(_at_play \
+          "${_upper}.1.1.mp4") & )
 }
 
 _send() {
