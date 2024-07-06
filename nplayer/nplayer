@@ -1,0 +1,218 @@
+#!/usr/bin/env bash
+#
+# SPDX-License-Identifier: AGPL-3.0
+
+_bin="$( \
+  dirname \
+    "$( \
+      command \
+        -v \
+	  "env")")"
+_lib="${_bin}/../lib"
+_share="${_bin}/../share"
+source \
+  "${_lib}/libcrash-bash/crash-bash"
+
+# Check all required programs
+# are available
+_requirements() {
+  _check_cmd \
+    "at"
+  _check_cmd \
+    "crop"
+  _check_cmd \
+    "dynssh"
+  _check_cmd \
+    "rsync"
+}
+
+# shellcheck disable=SC2034
+_global_variables() {
+  in_file=""
+  target_displays=()
+  split_mode=""
+  color=""
+  quiet=""
+}
+
+# Remote encade files
+# $1: input file
+# $2: output file
+# $3: parallel uploads
+# $@: target devices
+_nplayer() {
+  local \
+    _in="${1}" \
+    _split_mode="${2}" \
+    _encode_mode="${3}" \
+    _vids=() \
+    _dynssh_opts=() \
+    _rsync_opts=() \
+    _upper \
+    _lower
+  shift \
+    2
+  _displays=(
+    "$@"
+  )
+  _upper="$( \
+    mktemp)"
+  _lower="$( \
+    mktemp)"
+  gridcrop \
+    "${_in}" \
+    "${_upper}" \
+    -r \
+      1.1
+  if [[ "${_encode_mode}" == 'local' ]] ; then
+    if [[ "${split_mode}" == "horizontal" ]]; then
+      gridcrop \
+        "${_in}" \
+        "${_lower}" \
+        -r \
+          2.1
+    _dynssh_opts+=(
+      -C
+        rsync
+    )
+    _rsync_opts+=(
+      -avz
+    )
+    dynssh \
+      -v \
+      -t \
+        "${_displays}" \
+      "${_dynssh_opts[@]}" \
+      -- \
+      "${_rsync_opts[@]}"
+      "${_upper}" \
+      "${_displays}:${_upper}"
+    fi
+  fi
+}
+
+# Set defaults and, if present, overrides
+# from arch-grub command line option parameters
+_set_overrides() {
+  _set_override \
+    "split" \
+    "mode" \
+    "horizonal"
+  _set_override \
+    "out" \
+    "stdout" \
+    "n"
+  if [[ -v override_color ]]; then
+    color="${override_color}"
+  elif [[ -z "${color}" ]]; then
+    color="n"
+  fi
+  if [[ -v override_quiet ]]; then
+    quiet="${override_quiet}"
+  elif [[ -z "${quiet}" ]]; then
+    quiet="y"
+  fi
+}
+
+# Shows configuration options.
+_show_config() {
+  _msg_info "${app_name} configuration"
+  _msg_info "                Play date:   $(_get "play" "date")"
+  _msg_info "               Split mode:   $(_get "split" "mode")"
+  _msg_info "                  In file:   $(_get "in" "video")"
+  _msg_info "          Target displays:   ${target_displays[*]}"
+}
+
+
+# Show help usage, with an exit status.
+# $1: exit status number.
+_usage() {
+  local \
+    _usage_text
+  IFS='' \
+    read \
+      -r \
+      -d '' \
+      _usage_text << \
+        ENDUSAGETEXT || true
+
+nplay a multimedia
+
+Usage:
+  $(_get "app" "name")
+    [options]
+    <input_video>
+  options:
+     -t                   Target display
+     -m                   Split mode (horizontal)
+                          Default: $(_get "split" "mode")
+     -s                   Output to stdout.
+			  Default: $(_get "out" "stdout")
+     -h                   This message.
+     -v                   Enable verbose output
+ENDUSAGETEXT
+  _printf \
+    '%s\n' \
+    "${_usage_text}"
+  exit \
+    "${1}"
+}
+
+_globals
+_global_variables
+_requirements
+# shellcheck disable=SC2004
+# shellcheck disable=SC2034
+while \
+  getopts \
+    't:m:scvh?' \
+    arg; do
+  case \
+    "${arg}" in
+      t) target_displays+=(
+           "${OPTARG}"
+	 ) ;;
+    m) override_split_mode="${OPTARG}" ;;
+    s) override_out_stdout="y" ;;
+    c) override_color="y" ;;
+    v) override_quiet="n" ;;
+    h|?) _set_overrides && \
+	 _usage \
+           0 ;;
+    *)
+    _msg_error \
+      "Invalid argument '${arg}'" \
+      0 && \
+    _set_overrides && \
+    _usage \
+      1
+    ;;
+  esac
+done
+shift \
+  $(( \
+    OPTIND - 1 \
+  ))
+
+(( $# < 3 )) && \
+  _set_overrides && \
+  _usage \
+    1
+_set \
+  "in" \
+  "video" \
+  "${1}"
+shift \
+  1
+_set_overrides
+_config_user_init \
+  "media-tools"
+_ffmpeg_options_load
+_nplayer \
+  "$(_get \
+       "split" \
+       "mode")" \
+  "$(_get \
+       "in" \
+       "video")" \
+  "${target_displays[@]}"
