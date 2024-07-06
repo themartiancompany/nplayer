@@ -56,24 +56,26 @@ _android_player_check() {
     true
 }
 
+_get_sum() {
+  local \
+    _in="${1}"
+  sha256sum \
+    "${_in}" | \
+    awk \
+      '{print $1}'
+}
+
 _get_cached() {
   local \
-    _in="${1}" \
-    _type="${2}"
-    _cached
-    _sum
-  _sum="$( \
-    sha256sum \
-      "${_in}" | \
-      awk \
-        '{print $1}')"
-  if [ -e "${_cache}/${_sum}.${_type}" ]; then
-    _cached="$( \
+    _index="${1}" \
+    _content
+  if [ -e "${_index}" ]; then
+    _content="$( \
       cat \
-        "${_cache}/${_sum}.${_type}")"
-    if [ -e "${_cached}" ]; then
+        "${_index}")"
+    if [ -e "${_content}" ]; then
       echo \
-	"${_cached}"
+	"${_content}"
       return
     fi
   fi
@@ -84,26 +86,58 @@ _get_video() {
     _in="${1}" \
     _type="${2}" \
     _pos="${3}" \
-    _cached
+    _cached \
+    _sum \
+    _index
+  _sum="$( \
+    _get_sum \
+      "${_in}")"
+  _index="${_cache}/${_sum}.${_type}"
   _new="$( \
     mktemp)"
   _cached="$( \
     _get_cached \
-      "${_in}" \
-      "${_type}")"
+      "${_index}")"
   if [[ "${_cached}" != "" ]]; then
     _new="${_cached}"
   else
     gridcrop \
       -v \
       -r \
-        2.1 \
+        ${_pos} \
       "${_in}" \
       "${_new}"
     echo \
       "${_new}" > \
-      "${_cache}/${_sum}.${_type}"
+      "${_index}"
   fi
+}
+
+_get_open() {
+  local \
+    _view_mode="${1}"
+  if [[ "${_view_mode}" == "freedesktop" ]]; then
+    _open='xdg-open'
+  elif [[ "${_view_mode}" == "termux" ]]; then
+    _open='termux-open'
+    _android_player_check
+  fi
+}
+
+at_play() {
+  local \
+    _in="${1}" \
+    _cmd=()
+  _cmd=(
+    atd "&&"
+    echo \
+      "${_open}"
+      "${_in}" "|"
+    at
+      "now + 1 minute" 
+  )
+  echo \
+    "${_cmd[*]}"
 }
 
 _sync_play() {
@@ -112,17 +146,12 @@ _sync_play() {
     -t \
       "${_displays}" \
     -- \
-   "${_displays}" \
-   echo \
-     "${_open}" \
-       "${_upper}.1.1.mp4" "|" \
-     at \
-       "now + 1 minute"
-  echo \
-    "${_open}" \
-      "${_lower}.2.1.mp4" | \
-    at \
-      "now + 1 minute"
+    "${_displays}" \
+    $(_at_play \
+        "${_upper}.1.1.mp4") || \
+    true
+  $(_at_play \
+      "${_lower}.2.1.mp4")
 }
 
 _send() {
@@ -179,12 +208,8 @@ _nplayer() {
     "${_cache}"
   echo \
     "${_displays}"
-  if [[ "${_view_mode}" == "freedesktop" ]]; then
-    _open='xdg-open'
-  elif [[ "${_view_mode}" == "termux" ]]; then
-    _open='termux-open'
-    _android_player_check
-  fi
+  _get_open \
+    "${_view_mode}"
   _get_video \
     "${_in}" \
     "lower" \
