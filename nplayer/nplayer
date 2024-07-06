@@ -28,9 +28,11 @@ _requirements() {
 
 # shellcheck disable=SC2034
 _global_variables() {
+  play_date=""
   in_file=""
   target_displays=()
   split_mode=""
+  encode_mode=""
   view_mode=""
   sync_mode=""
   color=""
@@ -46,19 +48,33 @@ _nplayer() {
   local \
     _in="${1}" \
     _split_mode="${2}" \
-    _view_mode="${3}" \
-    _sync_mode="${4}" \
+    _encode_mode="${3}" \
+    _view_mode="${4}" \
+    _sync_mode="${5}" \
     _dynssh_opts=() \
     _rsync_opts=() \
     _upper \
     _lower \
     _now \
-    _open
+    _open \
+    _sum \
+    _cache
   shift \
-    4
+    5
   _displays=(
     "$@"
   )
+  _cache="$( \
+    _get_cache \
+      "$( \
+        _get \
+          "app" \
+          "name")")"
+  mkdir \
+    -p \
+    "${_cache}"
+  echo \
+    "${_displays}"
   if [[ "${_view_mode}" == "freedesktop" ]]; then
     _open='xdg-open'
   elif [[ "${_view_mode}" == "termux" ]]; then
@@ -68,20 +84,41 @@ _nplayer() {
     mktemp)"
   _lower="$( \
     mktemp)"
-  gridcrop \
-    -v \
-    -r \
-      2.1 \
-    "${_in}" \
-    "${_lower}"
+  _sum="$( \
+    sha256sum \
+      "${_in}" | awk '{print $1}')"
+  if [ -e "${_cache}/${_sum}.lower" ]; then
+    _lower="$( \
+      cat \
+        "${_cache}/${_sum}.lower")"
+  else
+    gridcrop \
+      -v \
+      -r \
+        2.1 \
+      "${_in}" \
+      "${_lower}"
+    echo \
+      "${_lower}" > \
+      "${_cache}/${_sum}.lower"
+  fi
   if [[ "${_encode_mode}" == 'local' ]] ; then
     if [[ "${split_mode}" == "horizontal" ]]; then
-      gridcrop \
-	-v \
-        -r \
-          1.1 \
-        "${_in}" \
-        "${_upper}"
+      if [[ -e "${_cache}/${_sum}.upper" ]]; then
+        _upper="$( \
+          cat \
+            "${_cache}/${_sum}.upper")"
+      else
+        gridcrop \
+          -v \
+          -r \
+            1.1 \
+          "${_in}" \
+          "${_upper}"
+        echo \
+          "${_upper}" > \
+          "${_cache}/${_sum}.upper"
+      fi
     _dynssh_opts+=(
       -C
         rsync
@@ -95,7 +132,6 @@ _nplayer() {
         "${_displays}" \
       "${_dynssh_opts[@]}" \
       -- \
-      "${_rsync_opts[@]}"
       "${_upper}.1.1.mp4" \
       "${_displays}:${_upper}.1.1.mp4"
     fi
@@ -109,12 +145,12 @@ _nplayer() {
    echo \
      "${_open}" \
        "${_upper}.1.1.mp4" "|" \
-     "at" 
+     "at" \
        "now + 1 minute"
   echo \
     "${_open}" \
-      "${_upper}.1.1.mp4" | \
-    at
+      "${_lower}.2.1.mp4" | \
+    at \
       "now + 1 minute"
 }
 
@@ -125,6 +161,10 @@ _set_overrides() {
     "split" \
     "mode" \
     "horizontal"
+  _set_override \
+    "encode" \
+    "mode" \
+    "local"
   _set_override \
     "view" \
     "mode" \
@@ -150,7 +190,9 @@ _show_config() {
   _msg_info "${app_name} configuration"
   _msg_info "                Play date:   $(_get "play" "date")"
   _msg_info "               Split mode:   $(_get "split" "mode")"
-  _msg_info "                Sync mode:   $(_get "spli" "mode")"
+  _msg_info "              Encode mode:   $(_get "encode" "mode")"
+  _msg_info "                View mode:   $(_get "view" "mode")"
+  _msg_info "                Sync mode:   $(_get "sync" "mode")"
   _msg_info "                  In file:   $(_get "in" "video")"
   _msg_info "          Target displays:   ${target_displays[*]}"
 }
@@ -240,11 +282,24 @@ _set \
 shift \
   1
 _set_overrides
+[[ "${target_displays[*]}" == "" ]] && \
+  _msg_error \
+    "the -t target display option is mandatory" \
+    0 && \
+  _usage \
+    1
 _config_user_init \
   "media-tools"
+_show_config
 _nplayer \
   "$(_get \
+       "in" \
+       "video")" \
+  "$(_get \
        "split" \
+       "mode")" \
+  "$(_get \
+       "encode" \
        "mode")" \
   "$(_get \
        "view" \
@@ -252,7 +307,4 @@ _nplayer \
   "$(_get \
        "sync" \
        "mode")" \
-  "$(_get \
-       "in" \
-       "video")" \
   "${target_displays[@]}"
