@@ -31,8 +31,19 @@ _global_variables() {
   in_file=""
   target_displays=()
   split_mode=""
+  view_mode=""
   color=""
   quiet=""
+}
+
+_os_open() {
+  local \
+    _file="${1}" \
+    _os
+  _os="$( \
+    uname \
+       -o)"
+  
 }
 
 # Remote encade files
@@ -49,7 +60,8 @@ _nplayer() {
     _dynssh_opts=() \
     _rsync_opts=() \
     _upper \
-    _lower
+    _lower \
+    _now
   shift \
     2
   _displays=(
@@ -61,16 +73,16 @@ _nplayer() {
     mktemp)"
   gridcrop \
     "${_in}" \
-    "${_upper}" \
+    "${_lower}" \
     -r \
-      1.1
+      2.1
   if [[ "${_encode_mode}" == 'local' ]] ; then
     if [[ "${split_mode}" == "horizontal" ]]; then
       gridcrop \
         "${_in}" \
-        "${_lower}" \
+        "${_upper}" \
         -r \
-          2.1
+          1.1
     _dynssh_opts+=(
       -C
         rsync
@@ -85,10 +97,20 @@ _nplayer() {
       "${_dynssh_opts[@]}" \
       -- \
       "${_rsync_opts[@]}"
-      "${_upper}" \
-      "${_displays}:${_upper}"
+      "${_upper}.1.1.mp4" \
+      "${_displays}:${_upper}.1.1.mp4"
     fi
   fi
+  dynssh \
+    -v \
+    -t \
+      "${_displays}" \
+    -- \
+   echo \
+     "" | \
+     "${_upper}" \
+    "${_displays}:${_upper}"
+
 }
 
 # Set defaults and, if present, overrides
@@ -165,7 +187,7 @@ _requirements
 # shellcheck disable=SC2034
 while \
   getopts \
-    't:m:scvh?' \
+    't:m:M:scvh?' \
     arg; do
   case \
     "${arg}" in
@@ -173,6 +195,7 @@ while \
            "${OPTARG}"
 	 ) ;;
     m) override_split_mode="${OPTARG}" ;;
+    M) override_view_mode="${OPTARG}" ;;
     s) override_out_stdout="y" ;;
     c) override_color="y" ;;
     v) override_quiet="n" ;;
@@ -211,6 +234,9 @@ _ffmpeg_options_load
 _nplayer \
   "$(_get \
        "split" \
+       "mode")" \
+  "$(_get \
+       "view" \
        "mode")" \
   "$(_get \
        "in" \
