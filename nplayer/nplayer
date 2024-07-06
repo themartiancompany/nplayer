@@ -36,16 +36,6 @@ _global_variables() {
   quiet=""
 }
 
-_os_open() {
-  local \
-    _file="${1}" \
-    _os
-  _os="$( \
-    uname \
-       -o)"
-  
-}
-
 # Remote encade files
 # $1: input file
 # $2: output file
@@ -55,15 +45,14 @@ _nplayer() {
   local \
     _in="${1}" \
     _split_mode="${2}" \
-    _encode_mode="${3}" \
-    _vids=() \
+    _view_mode="${3}" \
     _dynssh_opts=() \
     _rsync_opts=() \
     _upper \
     _lower \
     _now
   shift \
-    2
+    3
   _displays=(
     "$@"
   )
@@ -121,6 +110,10 @@ _set_overrides() {
     "mode" \
     "horizonal"
   _set_override \
+    "view" \
+    "mode" \
+    "android"
+  _set_override \
     "out" \
     "stdout" \
     "n"
@@ -168,6 +161,8 @@ Usage:
      -t                   Target display
      -m                   Split mode (horizontal)
                           Default: $(_get "split" "mode")
+     -M                   View mode (freedesktop, android)
+                          Default: $(_get "view" "mode")
      -s                   Output to stdout.
 			  Default: $(_get "out" "stdout")
      -h                   This message.
